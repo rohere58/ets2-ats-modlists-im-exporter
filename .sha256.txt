@@ -1,0 +1,2 @@
+CertUtil: -hashfile-Befehl ist fehlgeschlagen: 0x80070002 (WIN32: 2 ERROR_FILE_NOT_FOUND)
+CertUtil: Das System kann die angegebene Datei nicht finden.
