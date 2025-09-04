@@ -1,6 +1,6 @@
 ETS2/ATS Modlists Im-Exporter
 
-Version: 1.5.2
+Version: 2.1
 Ein schlankes Windows-Tool zum Importieren, Exportieren und Pflegen von active_mods-Listen für Euro Truck Simulator 2 und American Truck Simulator – mit Vorschau, Notizen, Link-Verwaltung und automatischem Entschlüsseln der profile.sii.
 
 Made by Winne (rore58) – for the DanielDoubleU community.
