@@ -1,220 +1,88 @@
-ETS2/ATS Modlists Im-Exporter
+# Truck Mod Importer – Version 3.0
 
-Version: 3.0
-Ein schlankes Windows-Tool zum Importieren, Exportieren und Pflegen von active_mods-Listen für Euro Truck Simulator 2 und American Truck Simulator – mit Vorschau, Notizen, Link-Verwaltung und automatischem Entschlüsseln der profile.sii.
+**Truck Mod Importer** ist ein Windows-Tool zur komfortablen Verwaltung von Modlisten für **Euro Truck Simulator 2 (ETS2)** und **American Truck Simulator (ATS)**.  
+Es unterstützt das Erstellen, Bearbeiten, Teilen und Importieren von Modlisten, inklusive Zusatzinformationen und automatischer Dateiverwaltung.
 
-Made by Winne (rore58) – for the DanielDoubleU community.
+---
 
-✨ Features
+## 🚀 Features
 
-Spiel & Profil wählen: ETS2/ATS umschalten, Profile auslesen (auch bei benutzerdefinierten Pfaden).
+- **Modlisten-Verwaltung**
+  - Erstellen, Laden und Löschen von Modlisten pro Spiel (ETS2 / ATS).
+  - Automatisches Speichern aller Änderungen in `.json`, `.txt` und optional `.note`.
 
-Modlisten laden/anzeigen: .txt-Modlisten aus modlists/<ETS2|ATS> werden mit Lade-Reihenfolge (1,2,3, …) in umgekehrter Reihenfolge angezeigt.
+- **Grid-Ansicht**
+  - Anzeige aller Mods mit Spalten:
+    - **Nr.** (Reihenfolge)
+    - **Package** (interner Paketname)
+    - **Mod** (frei editierbarer Anzeigename)
+    - **Info** (benutzerdefinierte Notizen)
+    - **Links** (Download-Links, pro Mod)
+  - Alle Änderungen werden automatisch in die zugehörigen JSON-Dateien gespeichert.
 
-Übernehmen in profile.sii: active_mods-Block wird präzise ersetzt, inkl. Backup-Rotation.
+- **Per-Liste Links**
+  - Für jede Modliste wird zusätzlich eine `<ModlistName>.link` erstellt.
+  - Enthält alle Download-Links dieser Modliste.
+  - Beim Teilen/Importieren werden Links automatisch mit der globalen `links.json` synchronisiert.
+  - Keine doppelten Einträge – bestehende Links werden erkannt und übersprungen.
 
-Export: active_mods aus profile.sii als .txt speichern.
+- **Import / Export**
+  - **Weitergeben (Export):**  
+    Erzeugt eine ZIP-Datei mit allen relevanten Dateien der Modliste (`.txt`, `.json`, `.note`, `.link`).
+  - **Importieren:**  
+    Entpackt eine ZIP und fügt die Modliste inkl. Links automatisch ins Tool ein.
 
-Auto-Decrypt: Binäre profile.sii werden beim Start automatisch via tools/SII_Decrypt.exe entschlüsselt.
+- **Profile-Verwaltung**
+  - Buttons: **Klonen**, **Umbenennen**, **Entfernen** direkt im Header neben der Profilauswahl.
+  - Klonen erstellt automatisch `<Profilname> - Klon` als Vorschlag.
+  - Namenseingabe mit Validierung (max. 20 Zeichen).
+  - Direkte Bearbeitung von Profilen (`profile.sii` wird im Hintergrund entschlüsselt).
 
-Notizen pro Modliste: Footer-Textfeld speichert/liest <deineListe>.note im selben Ordner.
+- **Sprach- und Theme-Unterstützung**
+  - Umschaltbar zwischen **Deutsch** und **Englisch**.
+  - Hell- und Dunkelmodus (Buttons und Header passen sich automatisch an).
 
-Download-Links pro Mod: Bekannte Links aus links.json (steam/sonstige); wenn unbekannt → Google-Suche-Button pro Mod.
+- **Stabile JSON-Persistenz**
+  - Änderungen an Mod- und Info-Spalten bleiben erhalten.
+  - Automatische Erstellung aller benötigten Dateien beim ersten Öffnen einer Modliste.
 
-Dark/Light Theme & Deutsch/Englisch: Im Optionen-Dialog umschaltbar.
+---
 
-Ordner öffnen: Schnellzugriff auf Profil-Ordner.
+## 🆕 Neuerungen in Version 3.0
 
-Modliste löschen: Löscht ausgewählte Liste und die zugehörige .note.
+- 🔗 **Links pro Modliste:**  
+  Synchronisation von `<ModlistName>.link` ↔ `links.json`.
+- 📦 **Import/Export verbessert:**  
+  Alle Dateien (`.txt`, `.json`, `.note`, `.link`) werden mitgepackt / mitgeladen.
+- 👥 **Profil-Buttons im Header:**  
+  Klonen, Umbenennen, Entfernen von Profilen direkt aus der Oberfläche.
+- 🌐 **Mehrsprachigkeit (DE/EN):**  
+  Alle Buttons, Menüs und Texte sind zweisprachig.
+- 🎨 **Dark/Light Mode für Header-Buttons:**  
+  Einheitliches Styling (auch Löschen-Button).
+- 🛠️ Zahlreiche Bugfixes und Performance-Verbesserungen.
 
-Über-Dialog: App-Info direkt aus dem UI.
+---
 
-🖼️ UI-Überblick
+## 📥 Installation
 
-Oben: Spiel, Profil, Modliste (+ Löschen-Button neben der Modliste).
+1. Lade das aktuelle Setup (`TruckModImporter_Setup_3.0.exe`) von den Releases herunter.
+2. Starte das Setup – es installiert das Tool inkl. Lizenzinformationen.
+3. Nach der Installation kannst du das Tool direkt aus dem Startmenü öffnen.
 
-Buttons: Modliste laden, Modliste übernehmen, Profilordner öffnen, Modliste exportieren, Text-Check, Donate, Backup wiederherstellen, Optionen, Über.
+---
 
-Mitte: Vorschau-Grid der Modliste mit Spalten #, Modname, Aktionen (z. B. Download/Google suchen).
+## 📄 Lizenz
 
-Footer: Logo (ETS2/ATS), „Info zur Modliste“-Label, Notizfeld (speichert .note), rechte Seitenlegende.
+Dieses Projekt steht unter der **Mozilla Public License 2.0 (MPL-2.0)**.  
+Den vollständigen Lizenztext findest du in der Datei [LICENSE.txt](LICENSE.txt) und im Installer.
 
-📦 Ordnerstruktur
+---
 
-Im Programmverzeichnis sollten folgende Ordner existieren:
+## 💡 Hinweise
 
-assets/               (Logos, Bilder, …)
-modlists/
-  ETS2/
-    deineListe.txt
-    links.json        (optional: Schlüssel→URL Map)
-    deineListe.note   (wird automatisch angelegt, wenn du Notizen speicherst)
-  ATS/
-    ...
-tools/
-  SII_Decrypt.exe     (für Auto-Decrypt; inkl. Lizenzhinweisen)
-
-
-Hinweis: links.json (pro Spiel) ist ein simples Dictionary { "Schlüssel": "URL" }.
-Schlüssel sind z. B. Modname oder der volle Token aus der Modzeile. Unbekannte Mods erhalten in der UI einen Google-Suche-Button.
-
-🛠️ Installation & Systemvoraussetzungen
-
-Windows 10/11
-
-.NET 8 Desktop Runtime (oder du lieferst eine self-contained Publish-Version aus)
-
-Schreibrechte im gewählten Profil-Ordner
-
-Start: Entpacke das Release-ZIP in einen Ordner deiner Wahl und starte TruckModImporter.exe.
-
-▶️ Bedienung (Kurzfassung)
-
-Spiel (ETS2/ATS) auswählen.
-
-Profil auswählen.
-
-Modliste auswählen → Modliste laden.
-
-(Optional) Notizen schreiben – wird automatisch als .note gespeichert.
-
-Modliste übernehmen → active_mods wird in profile.sii ersetzt.
-
-Profilordner öffnen oder Modliste exportieren bei Bedarf.
-
-Optionen: Sprache, Theme, benutzerdefinierte Profilpfade.
-
-🧠 Wie der Import funktioniert
-
-Deine .txt-Modliste muss einen gültigen active_mods-Block enthalten, z. B.:
-
-active_mods: 4
-active_mods[0]: "my_mod_package|My Cool Mod"
-active_mods[1]: "another_pkg|Another Mod"
-...
-
-
-Beim Übernehmen:
-
-Sichert profile.sii → Backup-Rotation (bis zu 5 Zeitstempel-Backups).
-
-Erkennt/entschlüsselt ggf. binäre profile.sii (Auto-Decrypt).
-
-Ersetzt genau den vorhandenen active_mods-Block durch den aus der geladenen .txt.
-
-⚙️ Optionen
-
-Sprache: Deutsch / Englisch
-
-Theme: Hell / Dunkel
-
-Profilpfade: Standard oder benutzerdefiniert (falls Steam-Ordner verschoben o. ä.)
-
-Einstellungen werden automatisch gespeichert und beim Start wiederhergestellt.
-
-💾 Export, Backups & Wiederherstellung
-
-Export: Liest active_mods aus profile.sii und speichert als .txt (Dateiname frei wählbar).
-
-Backups: Vor jedem Übernehmen wird profile.sii gesichert. Es werden die letzten 5 Backups behalten.
-
-Wiederherstellen: Wähle im Dialog die gewünschte Sicherung und stelle sie zurück.
-
-🔗 Links zu Mods
-
-Automatische Erkennung: Steam-Workshop-IDs in der Modzeile → Workshop-URL wird erkannt.
-
-links.json pro Spiel:
-
-Speicherort: modlists/ETS2/links.json bzw. modlists/ATS/links.json
-
-Format:
-
-{
-  "EAA Map - SEM EUROPA": "https://example.com/download/eaa",
-  "eaa_base_1.55_v4": "https://example.com/download/eaa-base"
-}
-
-
-Wenn ein Link vorhanden ist → Download-Button in der Liste.
-
-Sonst bekommst du pro Mod einen Google-Suche-Button.
-
-🧰 Entwickeln & Bauen
-Mit Visual Studio
-
-Projekt/Solution öffnen → Build
-
-Publish (Beispiel):
-
-Rechtsklick auf Projekt → Veröffentlichen → Ordnerprofil einrichten
-
-Ziel z. B. bin\Publish\win-x64
-
-Mit dotnet
-# Debug build
-dotnet build
-
-# Publish (framework-dependent)
-dotnet publish -c Release -r win-x64 --self-contained false -o .\publish
-
-# Publish (self-contained, eine größere, aber lauffertige App)
-dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o .\publish
-
-Wichtige csproj-Einträge (Assets/Tools/Modlists kopieren)
-
-Stelle sicher, dass deine .csproj diese Gruppen enthält:
-
-<ItemGroup>
-  <Content Include="assets\**\*.*">
-    <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-  </Content>
-  <Content Include="modlists\**\*.txt">
-    <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-  </Content>
-  <Content Include="modlists\**\*.json">
-    <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-  </Content>
-  <Content Include="tools\**\*.*">
-    <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-  </Content>
-</ItemGroup>
-
-❗ Troubleshooting
-
-Keine Profile sichtbar?
-→ In Optionen benutzerdefinierte Pfade setzen oder prüfen, ob die Standardpfade existieren.
-
-Modlisten erscheinen nicht?
-→ .txt in modlists/ETS2 bzw. modlists/ATS ablegen.
-
-Übernehmen meldet Fehler / kein Effekt?
-→ Prüfe, ob die .txt einen korrekten active_mods-Block enthält.
-→ Schreibrechte im Profilordner vorhanden?
-
-Auto-Decrypt greift nicht?
-→ Liegt tools/SII_Decrypt.exe im richtigen Ordner? Läuft ohne Admin-Prompt?
-
-Theme wechselt nicht überall?
-→ Einmal Theme umschalten (Hell → Dunkel → Hell). Sollte dann für alle UI-Elemente greifen.
-
-📄 Lizenz & Credits
-
-SCS Software: Euro Truck Simulator 2 / American Truck Simulator
-
-Trucky / truckymods.io: Für Mod-Verzeichnis/Links (nur externe Verweise/Recherche)
-
-Steam Workshop: Für Workshop-Links
-
-Dieses Projekt ist inoffiziell und steht nicht in Verbindung mit SCS, Steam oder Trucky.
-
-(Lizenztext deines Projekts hier ergänzen – z. B. MIT.)
-
-🤝 Beiträge
-
-Issues und Pull Requests sind willkommen.
-Bitte beim Einreichen von Mod-Links auf rechtliche Rahmenbedingungen achten und keine urheberrechtlich geschützten Dateien anhängen.
-
-💬 Kontakt
-
-Winne (rore58) – DanielDoubleU Community
+- Standardpfade:
+  - ETS2: `Dokumente\Euro Truck Simulator 2\modlists`
+  - ATS:  `Dokumente\American Truck Simulator\modlists`
+- Workshop-Mods werden aktuell nicht automatisch erkannt.
+- Backup deiner Modlisten vor größeren Änderungen empfohlen.
