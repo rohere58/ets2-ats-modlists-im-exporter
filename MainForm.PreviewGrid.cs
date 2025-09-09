@@ -2,6 +2,8 @@
 using System;
 using System.Drawing;
 using System.Windows.Forms;
+using Microsoft.Win32;
+using System.Linq; // Am Anfang der Datei ergänzen, falls noch nicht vorhanden
 
 namespace TruckModImporter
 {
@@ -15,10 +17,19 @@ namespace TruckModImporter
         private const string ColPackage  = "Package";
         private const string ColName     = "Name";
         private const string ColLinkVal  = "LinkValue";  // versteckt (enthält die URL)
-        private const string ColStatus   = "Status";     // ✓ / –
+        private const string ColInfo     = "Info";      // Neu
+        private const string ColStatus   = "Status";    // ✓ / –
         private const string ColDownload = "Download";   // Button
-        private const string ColTrucky   = "Trucky";
         private const string ColGoogle   = "Google";
+
+        // Felder und Flags (innerhalb der partial class MainForm, aber außerhalb von Methoden)
+        private static readonly object _wsLock = new object();
+        private static readonly System.Collections.Generic.Dictionary<int, System.Collections.Generic.HashSet<string>> _wsFileIndex = new();
+        private static readonly System.Collections.Generic.Dictionary<int, bool> _wsIndexReady = new();
+        private static readonly System.Collections.Generic.Dictionary<int, bool> _wsIndexBuilding = new();
+
+        // Toggle to enable/disable workshop indexing
+        private const bool ENABLE_WORKSHOP_INDEX = true;
 
         /// <summary>
         /// Baut bei Bedarf die tabellarische Vorschau.
@@ -34,8 +45,8 @@ namespace TruckModImporter
                 Size = rtbPreview.Size,
                 AllowUserToAddRows = false,
                 AllowUserToDeleteRows = false,
-                AllowUserToResizeRows = false,
-                ReadOnly = true,
+                AllowUserToResizeRows = true,
+                ReadOnly = false,
                 MultiSelect = false,
                 SelectionMode = DataGridViewSelectionMode.FullRowSelect,
                 AutoGenerateColumns = false,
@@ -52,34 +63,47 @@ namespace TruckModImporter
             };
             var cPkg = new DataGridViewTextBoxColumn
             {
-                Name = ColPackage, HeaderText = "Package", Width = 240, FillWeight = 24
+                Name = ColPackage,
+                HeaderText = "Package",
+                Width = 240,
+                FillWeight = 24,
+                ReadOnly = true // Spalte ist jetzt schreibgeschützt
             };
             var cName = new DataGridViewTextBoxColumn
             {
                 Name = ColName, HeaderText = "Mod", AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill, FillWeight = 46
             };
+            var cInfo = new DataGridViewTextBoxColumn
+            {
+                Name = ColInfo, // Korrigiert: ColInfo statt ColName
+                HeaderText = "Info",
+                AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill,
+                FillWeight = 46,
+                ReadOnly = false // Editierbar machen
+            };
             var cLinkVal = new DataGridViewTextBoxColumn
             {
                 Name = ColLinkVal, HeaderText = "LinkValue", Visible = false
             };
-            var cStatus = new DataGridViewTextBoxColumn
-            {
-                Name = ColStatus, HeaderText = " ", Width = 36
-            };
+            // Status-Spalte anpassen
+            var cStatus = new DataGridViewTextBoxColumn();
+            cStatus.Name = ColStatus;
+            cStatus.HeaderText = "Vorhanden";
+            cStatus.ReadOnly = true;
+            cStatus.AutoSizeMode = DataGridViewAutoSizeColumnMode.None;
+            cStatus.Width = 95;
+            cStatus.MinimumWidth = 80;
+            cStatus.DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleCenter;
             var cDownload = new DataGridViewButtonColumn
             {
                 Name = ColDownload, HeaderText = "", Width = 100, UseColumnTextForButtonValue = false // Text pro Zelle
-            };
-            var cTrucky = new DataGridViewButtonColumn
-            {
-                Name = ColTrucky, HeaderText = "", Text = "Trucky", UseColumnTextForButtonValue = true, Width = 80
             };
             var cGoogle = new DataGridViewButtonColumn
             {
                 Name = ColGoogle, HeaderText = "", Text = "Google", UseColumnTextForButtonValue = true, Width = 80
             };
 
-            _gridMods.Columns.AddRange(cRaw, cPkg, cName, cLinkVal, cStatus, cDownload, cTrucky, cGoogle);
+            _gridMods.Columns.AddRange(cRaw, cPkg, cName, cInfo, cLinkVal, cStatus, cDownload, cGoogle);
 
             // Status zentrieren
             _gridMods.Columns[ColStatus].DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleCenter;
@@ -90,6 +114,7 @@ namespace TruckModImporter
             _gridMods.CellDoubleClick += GridMods_CellDoubleClick;
             _gridMods.Resize += GridMods_Resize_Reposition;
             this.Resize += (s, e) => GridMods_Resize_Reposition(s, e);
+            _gridMods.CellPainting += GridMods_CellPainting_ThemeButtons;
 
             // Einfügen & rtbPreview ausblenden
             Controls.Add(_gridMods);
@@ -97,8 +122,21 @@ namespace TruckModImporter
             rtbPreview.Visible = false;
             _gridMods.Visible = true;
 
+            // Nach dem Hinzufügen/Visible-Schalten:
+            try
+            {
+                _gridMods.DataBindingComplete -= (s, e) => Avail_UpdateForAllRows_Simple();
+                _gridMods.DataBindingComplete += (s, e) => Avail_UpdateForAllRows_Simple();
+                _gridMods.Resize -= (s, e) => Avail_UpdateForAllRows_Simple();
+                _gridMods.Resize += (s, e) => Avail_UpdateForAllRows_Simple();
+            }
+            catch { }
+
             ApplyGridThemeFromSettings();
             EnsureGridContextMenuBuilt();
+
+            // Persistenz-Event einmalig verbinden
+            Persist_EnsureGridWired();
         }
 
         private void GridMods_Resize_Reposition(object? sender, EventArgs e)
@@ -145,7 +183,7 @@ namespace TruckModImporter
         /// Baut die Grid-Zeilen anhand des Textes in rtbPreview neu auf.
         /// Erkennt/füllt Links, setzt Status und Download-Button-Text.
         /// </summary>
-        private void RebuildPreviewGridFromRtb()
+        private void RebuildPreviewGridFromRtb_Core()
         {
             EnsurePreviewGridBuilt();
             if (_gridMods == null) return;
@@ -200,6 +238,16 @@ namespace TruckModImporter
 
             _gridMods.ResumeLayout();
             _gridMods.Refresh();
+
+            Persist_AfterGridFilled_Hook();
+
+            // HIER ist der richtige Platz für den Aufruf:
+            try { Avail_UpdateForAllRows_Simple(); } catch { }
+        }
+
+        private void RebuildPreviewGridFromRtb()
+        {
+            RebuildPreviewGridFromRtb_Core();
         }
 
         private void UpdateRowUi(int rowIndex, string? url)
@@ -226,16 +274,14 @@ namespace TruckModImporter
                 return;
             }
 
-            if (col == ColTrucky || col == ColGoogle)
+            if (col == ColGoogle)
             {
                 var modName = (_gridMods.Rows[e.RowIndex].Cells[ColName].Value ?? "").ToString();
                 var pkg = (_gridMods.Rows[e.RowIndex].Cells[ColPackage].Value ?? "").ToString();
                 var query = !string.IsNullOrWhiteSpace(modName) ? modName : pkg;
                 if (string.IsNullOrWhiteSpace(query)) return;
 
-                string url = col == ColTrucky
-                    ? $"https://truckyapp.com/?s={Uri.EscapeDataString(query)}"
-                    : $"https://www.google.com/search?q={Uri.EscapeDataString(query + " ETS2 ATS mod")}";
+                string url = $"https://www.google.com/search?q={Uri.EscapeDataString(query + " ETS2 ATS mod")}";
 
                 OpenUrl(url);
             }
@@ -249,12 +295,6 @@ namespace TruckModImporter
             if (!string.IsNullOrWhiteSpace(url))
             {
                 OpenUrl(url!);
-            }
-            else
-            {
-                var modName = (_gridMods.Rows[e.RowIndex].Cells[ColName].Value ?? "").ToString();
-                if (!string.IsNullOrWhiteSpace(modName))
-                    OpenUrl($"https://truckyapp.com/?s={Uri.EscapeDataString(modName)}");
             }
         }
 
@@ -404,5 +444,233 @@ namespace TruckModImporter
 
             return dlg.ShowDialog(this) == DialogResult.OK ? txt.Text.Trim() : null;
         }
+
+        private void GridMods_CellPainting_ThemeButtons(object? sender, DataGridViewCellPaintingEventArgs e)
+        {
+            if (_gridMods == null) return;
+            if (e == null || e.Graphics == null) return; // Fix für CS8602
+
+            // Prüfe, ob es eine Button-Spalte ist
+            var colName = _gridMods.Columns[e.ColumnIndex].Name;
+            if (colName != "Download" && colName != "Google")
+                return;
+
+            e.Handled = true;
+            e.PaintBackground(e.ClipBounds, true);
+
+            // Farben je nach Theme
+            bool dark = _currentTheme.ToString() == "Dark";
+            Color back = dark ? Color.FromArgb(50, 50, 55) : Color.White;
+            Color fore = dark ? Color.WhiteSmoke : Color.Black;
+            Color border = dark ? Color.FromArgb(72, 72, 78) : Color.LightGray;
+
+            using (var b = new SolidBrush(back))
+                e.Graphics!.FillRectangle(b, e.CellBounds);
+
+            // Button-Text
+            string text = e.FormattedValue?.ToString() ?? "";
+            var font = e.CellStyle?.Font ?? _gridMods.Font; // Fix: Fallback auf Grid-Font
+            TextRenderer.DrawText(
+                e.Graphics, text, font,
+                e.CellBounds, fore, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+
+            // Rahmen
+            using (var p = new Pen(border))
+                e.Graphics.DrawRectangle(p, e.CellBounds.Left, e.CellBounds.Top, e.CellBounds.Width - 1, e.CellBounds.Height - 1);
+        }
+
+        // Verfügbarkeits-Scan-Methoden
+        private void Avail_UpdateForAllRows_Simple()
+        {
+            var g = _gridMods;
+            if (g == null || g.IsDisposed) return;
+            if (!g.Columns.Contains(ColStatus) || !g.Columns.Contains(ColPackage)) return;
+
+            int idxStatus  = g.Columns[ColStatus].Index;
+            int idxPackage = g.Columns[ColPackage].Index;
+
+            var colOk  = System.Drawing.Color.FromArgb(30, 150, 80);
+            var colBad = System.Drawing.Color.FromArgb(200, 60, 60);
+
+            foreach (DataGridViewRow row in g.Rows)
+            {
+                try
+                {
+                    string baseName = System.Convert.ToString(row.Cells[idxPackage].Value) ?? string.Empty;
+                    if (string.IsNullOrWhiteSpace(baseName))
+                    {
+                        var cell = row.Cells[idxStatus];
+                        cell.Value = "-";
+                        cell.Style.ForeColor = System.Drawing.Color.Gray;
+                        cell.Style.SelectionForeColor = System.Drawing.Color.Gray;
+                        continue;
+                    }
+
+                    var candidates = new System.Collections.Generic.List<string>();
+                    candidates.Add(baseName);
+                    if (!baseName.EndsWith(".scs", System.StringComparison.OrdinalIgnoreCase)) candidates.Add(baseName + ".scs");
+                    if (!baseName.EndsWith(".zip", System.StringComparison.OrdinalIgnoreCase)) candidates.Add(baseName + ".zip");
+
+                    bool exists = Avail_IsPackagePresent_Simple(candidates);
+
+                    var cell2 = row.Cells[idxStatus];
+                    cell2.Value = exists ? "Vorhanden" : "Fehlt";
+                    var c = exists ? colOk : colBad;
+                    cell2.Style.ForeColor = c;
+                    cell2.Style.SelectionForeColor = c;
+                }
+                catch
+                {
+                    try
+                    {
+                        var cell = row.Cells[idxStatus];
+                        cell.Value = "?";
+                        cell.Style.ForeColor = System.Drawing.Color.Gray;
+                        cell.Style.SelectionForeColor = System.Drawing.Color.Gray;
+                    } catch { }
+                }
+            }
+        }
+
+        // Workshop-Index-Builder (nicht blockierend)
+        private void Avail_WorkshopIndex_Ensure(int appId)
+        {
+            if (!ENABLE_WORKSHOP_INDEX) return;
+
+            lock (_wsLock)
+            {
+                if (_wsIndexReady.ContainsKey(appId) && _wsIndexReady[appId]) return;
+                if (_wsIndexBuilding.ContainsKey(appId) && _wsIndexBuilding[appId]) return;
+                _wsIndexBuilding[appId] = true;
+            }
+
+            System.Threading.Tasks.Task.Run(() =>
+            {
+                try
+                {
+                    var set = new System.Collections.Generic.HashSet<string>(System.StringComparer.OrdinalIgnoreCase);
+                    foreach (var dir in Avail_FindWorkshopDirs_Simple(appId))
+                    {
+                        try
+                        {
+                            if (string.IsNullOrWhiteSpace(dir) || !System.IO.Directory.Exists(dir)) continue;
+                            foreach (var file in System.IO.Directory.EnumerateFiles(dir, "*.*", System.IO.SearchOption.AllDirectories))
+                            {
+                                if (file.EndsWith(".scs", System.StringComparison.OrdinalIgnoreCase) ||
+                                    file.EndsWith(".zip", System.StringComparison.OrdinalIgnoreCase))
+                                {
+                                    set.Add(System.IO.Path.GetFileName(file));
+                                }
+                            }
+                        }
+                        catch { }
+                    }
+
+                    lock (_wsLock)
+                    {
+                        _wsFileIndex[appId] = set;
+                        _wsIndexReady[appId] = true;
+                        _wsIndexBuilding[appId] = false;
+                    }
+
+                    // Optional: UI-Refresh nach Index-Bau
+                    try { BeginInvoke(new System.Action(() => { try { Avail_UpdateForAllRows_Simple(); } catch { } })); } catch { }
+                }
+                catch
+                {
+                    lock (_wsLock) { _wsIndexBuilding[appId] = false; }
+                }
+            });
+        }
+
+        /// <summary>
+        /// Gibt alle Workshop-Verzeichnisse für die angegebene AppID zurück.
+        /// </summary>
+        private System.Collections.Generic.IEnumerable<string> Avail_FindWorkshopDirs_Simple(int appId)
+        {
+            var list = new System.Collections.Generic.List<string>();
+            try
+            {
+                // Standard-Steam-Library-Pfad ermitteln
+                var steamPath = Microsoft.Win32.Registry.GetValue(
+                    @"HKEY_CURRENT_USER\Software\Valve\Steam", "SteamPath", null) as string;
+                if (string.IsNullOrWhiteSpace(steamPath)) return list;
+
+                // Workshop-Content-Verzeichnis für die AppID
+                var workshopDir = System.IO.Path.Combine(steamPath, "steamapps", "workshop", "content", appId.ToString());
+                if (System.IO.Directory.Exists(workshopDir))
+                    list.Add(workshopDir);
+
+                // Zusätzliche Steam-Librarys durchsuchen (optional)
+                // Hier könnten weitere Pfade ergänzt werden, falls mehrere Librarys genutzt werden.
+            }
+            catch { }
+            return list;
+        }
+
+        // Nur lokale Mod-Ordner (ohne Workshop)
+        private System.Collections.Generic.IEnumerable<string> Avail_ModDirs_LocalOnly()
+        {
+            var list = new System.Collections.Generic.List<string>();
+            try
+            {
+                var docs = System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyDocuments);
+                if (cbGame?.SelectedIndex == 1) // ATS
+                    list.Add(System.IO.Path.Combine(docs, "American Truck Simulator", "mod"));
+                else
+                    list.Add(System.IO.Path.Combine(docs, "Euro Truck Simulator 2", "mod"));
+            }
+            catch { }
+            return list;
+        }
+
+        // Verfügbarkeit prüfen: erst lokal, dann Workshop-Index
+        private bool Avail_IsPackagePresent_Simple(System.Collections.Generic.IEnumerable<string> candidateNames)
+        {
+            // 1) Documents\mod direct check first (fast)
+            try
+            {
+                foreach (var dir in Avail_ModDirs_LocalOnly())
+                {
+                    try
+                    {
+                        foreach (var cand in candidateNames)
+                        {
+                            var full = System.IO.Path.Combine(dir, cand);
+                            if (System.IO.File.Exists(full)) return true;
+                        }
+                    }
+                    catch { }
+                }
+            } catch { }
+
+            // 2) Workshop index lookup (fast, if ready)
+            if (ENABLE_WORKSHOP_INDEX)
+            {
+                int appId = (cbGame?.SelectedIndex == 1) ? 270880 : 227300;
+                Avail_WorkshopIndex_Ensure(appId);
+
+                bool ready;
+                System.Collections.Generic.HashSet<string>? set = null;
+
+                lock (_wsLock)
+                {
+                    _wsFileIndex.TryGetValue(appId, out set);
+                    _wsIndexReady.TryGetValue(appId, out ready);
+                }
+
+                if (ready && set != null)
+                {
+                    foreach (var cand in candidateNames)
+                    {
+                        var fn = System.IO.Path.GetFileName(cand);
+                        if (set.Contains(fn)) return true;
+                    }
+                }
+            }
+
+            return false;
+        }
     }
 }
+

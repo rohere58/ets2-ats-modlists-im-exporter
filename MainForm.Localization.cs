@@ -11,7 +11,7 @@ namespace TruckModImporter
         // Schlüssel: UI-Elemente und Tooltips
         private static readonly Dictionary<string, (string de, string en)> T = new()
         {
-            ["hdr"] = ("ETS2/ATS Modlist Importer", "ETS2/ATS Modlist Importer"),
+            ["hdr"] = ("ETS2/ATS Modlist Importer/Exporter", "ETS2/ATS Modlist Importer/Exporter"),
 
             // Labels
             ["lblGame"]    = ("Spiel:",    "Game:"),
@@ -23,7 +23,7 @@ namespace TruckModImporter
             ["chkAutoDec"] = ("Auto-Decrypt mit SII_Decrypt.exe (falls Binär)", "Auto-decrypt with SII_Decrypt.exe (if binary)"),
 
             // Buttons
-            ["btnLoad"]    = ("Modliste laden",        "Load mod list"),
+            ["btnLoad"]    = ("Aktualisieren",                 "Refresh"),
             ["btnApply"]   = ("Modliste übernehmen",   "Apply mod list"),
             ["btnOpen"]    = ("Profilordner öffnen",   "Open profile folder"),
             ["btnExport"]  = ("Modliste exportieren",  "Export mod list"),
@@ -42,7 +42,7 @@ namespace TruckModImporter
             ["tipList"]    = ("Vorhandene Modliste auswählen", "Select existing mod list"),
             ["tipRaw"]     = ("Kompletten active_mods-Block 1:1 einfügen", "Insert complete active_mods block 1:1"),
             ["tipAutoDec"] = ("Wenn profile.sii binär ist, automatisch entschlüsseln (falls Tool vorhanden)", "If profile.sii is binary, auto-decrypt (if tool present)"),
-            ["tipLoad"]    = ("Ausgewählte Modliste in die Vorschau laden", "Load selected mod list into preview"),
+            ["tipLoad"]    = ("Modliste neu einlesen / Ansicht aktualisieren", "Reload mod list / refresh view"),
             ["tipApply"]   = ("Modliste in das Profil schreiben", "Write mod list into profile"),
             ["tipOpen"]    = ("Ordner des ausgewählten Profils öffnen", "Open selected profile's folder"),
             ["tipExport"]  = ("active_mods aus Profil als .txt exportieren", "Export active_mods from profile as .txt"),
@@ -83,6 +83,7 @@ namespace TruckModImporter
             btnDonate.Text  = isEN ? T["btnDonate"].en  : T["btnDonate"].de;
             btnRestore.Text = isEN ? T["btnRestore"].en : T["btnRestore"].de;
             btnOptions.Text = isEN ? T["btnOptions"].en : T["btnOptions"].de;
+            btnOpenModlists.Text = lang == "en" ? "Open Modlist Folder" : "Modlisten-Ordner öffnen";
 
             // Game-Combo neu befüllen (Auswahl beibehalten)
             var idx = cbGame.SelectedIndex;
@@ -105,10 +106,78 @@ namespace TruckModImporter
             tips.SetToolTip(btnDonate,  isEN ? T["tipDonate"].en  : T["tipDonate"].de);
             tips.SetToolTip(btnRestore, isEN ? T["tipRestore"].en : T["tipRestore"].de);
             tips.SetToolTip(btnOptions, isEN ? T["tipOptions"].en : T["tipOptions"].de);
+            tips.SetToolTip(btnOpenModlists, lang == "en" ? "Open existing modlists" : "Vorhandene Modlisten öffnen");
 
             // >>> Footer-Beschriftung anpassen <<<
             // Methode ist in MainForm.FooterNotes.cs implementiert
             UpdateFooterLanguage(isEN ? "en" : "de");
+
+            try { UpdateBackupProfilesButtonLanguage(); } catch { }
+            try { PositionBackupProfilesButton(); } catch { }
+
+            // --- translate dynamic backup button ---
+            try
+            {
+                var isEN2 = (lang?.ToLowerInvariant() == "en");
+                var btnBackupProfiles = Controls.Find("btnBackupProfiles", true).FirstOrDefault() as Button;
+                if (btnBackupProfiles != null)
+                {
+                    btnBackupProfiles.Text = isEN2 ? "Backup all profiles" : "Alle Profile sichern";
+                    // optional: tooltip
+                    if (tips != null)
+                        tips.SetToolTip(btnBackupProfiles, isEN2 ? "Back up the whole profiles folder" : "Gesamten Profiles-Ordner sichern");
+                }
+            }
+            catch { /* ignore */ }
+
+            try { EnsureHeaderShareImport_L10n(lang ?? "de"); } catch {}
+
+            if (btnListShare  != null && !btnListShare.IsDisposed)
+                btnListShare.Text  = lang.StartsWith("en", StringComparison.OrdinalIgnoreCase) ? "Share"  : "Weitergeben";
+            if (btnListImport != null && !btnListImport.IsDisposed)
+                btnListImport.Text = lang.StartsWith("en", StringComparison.OrdinalIgnoreCase) ? "Import" : "Importieren";
+
+            // [Delete-L10n]
+            try
+            {
+                if (btnListDelete != null && !btnListDelete.IsDisposed)
+                    btnListDelete.Text = lang.StartsWith("en", StringComparison.OrdinalIgnoreCase) ? "Delete" : "Löschen";
+            }
+            catch { }
+
+            try { EnsureHeaderShareImportButtons(); } catch {}
+            try { EnsureHeaderProfileButtons(); } catch {}
+
+            try { EnsureHeaderProfile_L10n(lang); } catch {}
+
+            try { ApplyThemeToDynamicButtons(); } catch {}
+            try { EnsureHeaderProfile_Theme(); } catch {}
+
+            // im Bereich der Button-Erstellung für Profile ...
+            if (btnProfRename == null || btnProfRename.IsDisposed)
+            {
+                btnProfRename = new Button
+                {
+                    Name = "btnProfRename",
+                    Text = GetCurrentLanguageIsEnglish() ? "Rename" : "Umbenennen",
+                    AutoSize = true, Anchor = AnchorStyles.Top | AnchorStyles.Left,
+                    UseVisualStyleBackColor = true, Visible = true
+                };
+                btnProfRename.Click -= BtnProfRename_Click;
+                btnProfRename.Click += BtnProfRename_Click;
+            }
+            if (btnProfDelete == null || btnProfDelete.IsDisposed)
+            {
+                btnProfDelete = new Button
+                {
+                    Name = "btnProfDelete",
+                    Text = GetCurrentLanguageIsEnglish() ? "Remove" : "Entfernen",
+                    AutoSize = true, Anchor = AnchorStyles.Top | AnchorStyles.Left,
+                    UseVisualStyleBackColor = true, Visible = true
+                };
+                btnProfDelete.Click -= BtnProfDelete_Click;
+                btnProfDelete.Click += BtnProfDelete_Click;
+            }
         }
 
         // Wir merken uns die zuletzt gefundenen Labeltexte, damit SetLabelTextLike sie wiederfindet

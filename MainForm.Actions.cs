@@ -11,6 +11,9 @@ namespace TruckModImporter
 {
     public partial class MainForm
     {
+        // verhindert doppeltes Öffnen des SaveFileDialog
+        private bool _exportBusy = false;
+
         // ============================================================
         // Button: "Modliste übernehmen" – reines 1:1 Copy&Paste
         // ============================================================
@@ -26,7 +29,11 @@ namespace TruckModImporter
                     return;
                 }
 
-                var profileDir = GetSelectedProfilePath();
+                var item = cbProfile.SelectedItem as ProfileItem;
+                if (item == null) return; // oder Fehlerbehandlung
+                string profilePath = item.Path;
+
+                var profileDir = profilePath;
                 if (string.IsNullOrWhiteSpace(profileDir) || !Directory.Exists(profileDir))
                 {
                     MessageBox.Show(this, "Kein Profil ausgewählt.", "Modliste übernehmen",
@@ -293,6 +300,161 @@ namespace TruckModImporter
         {
             try { File.Copy(path, path + ".bak", overwrite: true); } catch { /* best effort */ }
             File.WriteAllText(path, content, Encoding.UTF8);
+        }
+
+        // ------------------------------------------------------------
+        // Export & Helpers (ersetzen)
+        // ------------------------------------------------------------
+
+        public void DoExportModlist()
+        {
+            if (_exportBusy) return;
+            _exportBusy = true;
+            var oldEnabled = btnExport?.Enabled ?? true;
+            try
+            {
+                if (btnExport != null) btnExport.Enabled = false;
+
+                var siiPath = GetSelectedProfileSiiPathOrThrow();
+                EnsureSiiDecryptedInPlace(siiPath);
+
+                var text = File.ReadAllText(siiPath, Encoding.UTF8);
+                var block = ExtractActiveModsBlock(text);
+                if (block == null)
+                {
+                    MessageBox.Show(this,
+                        GetCurrentLanguageIsEnglish()
+                            ? "No active_mods block found in profile.sii."
+                            : "In der profile.sii wurde kein active_mods-Block gefunden.",
+                        GetCurrentLanguageIsEnglish() ? "Export mod list" : "Modliste exportieren",
+                        MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    SafeSetStatus("Export: kein active_mods-Block gefunden.");
+                    return;
+                }
+
+                using var sfd = new SaveFileDialog
+                {
+                    Filter = "Text (*.txt)|*.txt|All files (*.*)|*.*",
+                    FileName = SuggestExportFileName(),
+                    Title = GetCurrentLanguageIsEnglish() ? "Save mod list…" : "Modliste speichern…",
+                    OverwritePrompt = true
+                };
+                if (sfd.ShowDialog(this) != DialogResult.OK) return;
+
+                File.WriteAllText(sfd.FileName, block, new UTF8Encoding(false));
+                SafeSetStatus(GetCurrentLanguageIsEnglish()
+                    ? $"Mod list exported: {Path.GetFileName(sfd.FileName)}"
+                    : $"Modliste exportiert: {Path.GetFileName(sfd.FileName)}");
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this,
+                    GetCurrentLanguageIsEnglish()
+                        ? "Error while exporting mod list:\n" + ex.Message
+                        : "Fehler beim Exportieren der Modliste:\n" + ex.Message,
+                    GetCurrentLanguageIsEnglish() ? "Error" : "Fehler",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+                SafeSetStatus("Export-Fehler: " + ex.Message);
+            }
+            finally
+            {
+                if (btnExport != null) btnExport.Enabled = oldEnabled;
+                _exportBusy = false;
+            }
+        }
+
+        /// <summary> Liefert den Pfad zur profile.sii des aktuell ausgewählten Profils. </summary>
+        private string GetSelectedProfileSiiPathOrThrow()
+        {
+            // dieselbe robuste Auflösung wie bei „Profilordner öffnen“/Restore
+            var dir = ResolveSelectedProfileDir_ForButtons();   // kommt aus deiner ProfileFolder…-Datei
+            var sii = Path.Combine(dir, "profile.sii");
+            if (!File.Exists(sii))
+                throw new FileNotFoundException(
+                    GetCurrentLanguageIsEnglish()
+                        ? "profile.sii not found for the selected profile."
+                        : "profile.sii für das ausgewählte Profil nicht gefunden.",
+                    sii);
+            return sii;
+        }
+
+        /// <summary>Extrahiert den kompletten active_mods-Block 1:1 (count-Zeile + alle Items).</summary>
+// Arbeitet zeilenweise und ist tolerant gegenüber Leerzeichen/Varianten.
+private static string? ExtractActiveModsBlock(string text)
+{
+    // Original-Zeilentrenner beibehalten
+    string eol = text.Contains("\r\n") ? "\r\n" : "\n";
+
+    using var sr = new StringReader(text);
+    var sb = new StringBuilder();
+
+    bool inBlock = false;
+    string? line;
+
+    // Muster:
+    //   active_mods: <zahl>
+    //   active_mods[ <idx> ]: "<...>" | beliebig…
+    var rxStart = new Regex(@"^\s*active_mods\s*:\s*\d+\s*$");
+    var rxItem  = new Regex(@"^\s*active_mods\[\s*\d+\s*\]\s*:\s*.*$");
+
+    while ((line = sr.ReadLine()) != null)
+    {
+        if (!inBlock)
+        {
+            if (rxStart.IsMatch(line))
+            {
+                inBlock = true;
+                sb.Append(line).Append(eol);
+            }
+        }
+        else
+        {
+            if (rxItem.IsMatch(line))
+            {
+                sb.Append(line).Append(eol);
+            }
+            else if (string.IsNullOrWhiteSpace(line))
+            {
+                // Leere Zeilen innerhalb des Blocks überspringen (nicht anhängen, nicht abbrechen)
+                continue;
+            }
+            else
+            {
+                break; // Block beendet
+            }
+        }
+    }
+
+    if (!inBlock) return null;
+
+    // Keine zusätzliche Leerzeile am Ende
+    return sb.ToString().TrimEnd('\r', '\n');
+}
+
+        private string SuggestExportFileName()
+        {
+            var raw = cbProfile?.SelectedItem?.ToString() ?? "modlist";
+            // falls die Anzeige „Name (C:\Pfad\id)“ ist → nur den Namen nehmen
+            var friendly = Regex.Replace(raw, @"\s*\(.*\)\s*$", "");
+            var tag = (cbGame?.SelectedIndex == 1) ? "ATS" : "ETS2";
+            return $"{tag}_{SanitizeFileName(friendly)}_active_mods.txt";
+        }
+
+        private static string SanitizeFileName(string name)
+        {
+            foreach (var c in Path.GetInvalidFileNameChars())
+                name = name.Replace(c, '_');
+            return name.Trim();
+        }
+
+        /// <summary>
+        /// Stellt sicher, dass die angegebene SII-Datei entschlüsselt ist.
+        /// Platzhalter-Implementierung: Fügt keine echte Entschlüsselung durch.
+        /// </summary>
+        private void EnsureSiiDecryptedInPlace(string siiPath)
+        {
+            // Falls Sie eine Entschlüsselung benötigen, implementieren Sie diese hier.
+            // Andernfalls kann diese Methode leer bleiben, wenn profile.sii bereits im Klartext vorliegt.
         }
     }
 }

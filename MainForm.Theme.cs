@@ -68,7 +68,7 @@ namespace TruckModImporter
             }
 
             // Buttons
-            var buttons = new[] { btnLoad, btnApply, btnOpen, btnExport, btnCheck, btnDonate, btnRestore, btnOptions };
+            var buttons = new[] { btnLoad, btnApply, btnOpen, btnExport, btnCheck, btnDonate, btnRestore, btnOptions, btnOpenModlists };
             foreach (var btn in buttons)
             {
                 btn.FlatStyle = FlatStyle.Flat;
@@ -78,6 +78,19 @@ namespace TruckModImporter
                 btn.FlatAppearance.MouseOverBackColor = pal.ButtonHover;
                 btn.Height = 32;
                 btn.Margin = new Padding(0, 0, 8, 0);
+            }
+
+            // --- style dynamic backup button exactly like the others ---
+            var btnBackupProfiles = Controls.Find("btnBackupProfiles", true).FirstOrDefault() as Button;
+            if (btnBackupProfiles != null)
+            {
+                btnBackupProfiles.FlatStyle = FlatStyle.Flat;
+                btnBackupProfiles.BackColor = pal.ButtonBg;
+                btnBackupProfiles.ForeColor = pal.BaseFg;
+                btnBackupProfiles.FlatAppearance.BorderColor = pal.ButtonBorder;
+                btnBackupProfiles.FlatAppearance.MouseOverBackColor = pal.ButtonHover;
+                btnBackupProfiles.Height = 32;
+                btnBackupProfiles.Margin = new Padding(0, 0, 8, 0);
             }
 
             // Preview (Editor)
@@ -102,7 +115,7 @@ namespace TruckModImporter
             }
             catch { /* ignore */ }
 
-            // b) zusätzlich versuchen wir, ein in FooterNotes.cs erzeugtes Strong-Feld zu erreichen
+            // b) additionally try to access a Strong field generated in FooterNotes.cs
             try
             {
                 var fldStrong = GetType().GetField("_footerPanelStrong", BindingFlags.Instance | BindingFlags.NonPublic);
@@ -122,7 +135,96 @@ namespace TruckModImporter
 
             // Reflow sicherheitshalber
             try { UpdatePreviewBounds(); } catch { /* ignore */ }
+
+            if (_gridMods != null)
+            {
+                if (theme == AppTheme.Dark)
+                {
+                    _gridMods.BackgroundColor = Color.FromArgb(28, 28, 28);
+                    _gridMods.DefaultCellStyle.BackColor = Color.FromArgb(28, 28, 28);
+                    _gridMods.DefaultCellStyle.ForeColor = Color.WhiteSmoke;
+                    _gridMods.ColumnHeadersDefaultCellStyle.BackColor = Color.FromArgb(40, 40, 40);
+                    _gridMods.ColumnHeadersDefaultCellStyle.ForeColor = Color.Gainsboro;
+                    _gridMods.GridColor = Color.FromArgb(64, 64, 64);
+                }
+                else
+                {
+                    _gridMods.BackgroundColor = SystemColors.Window;
+                    _gridMods.DefaultCellStyle.BackColor = SystemColors.Window;
+                    _gridMods.DefaultCellStyle.ForeColor = SystemColors.WindowText;
+                    _gridMods.ColumnHeadersDefaultCellStyle.BackColor = SystemColors.Control;
+                    _gridMods.ColumnHeadersDefaultCellStyle.ForeColor = SystemColors.ControlText;
+                    _gridMods.GridColor = SystemColors.ControlDark;
+                }
+                _gridMods.EnableHeadersVisualStyles = false;
+                _gridMods.CellPainting += GridMods_CellPainting_ThemeButtons;
+            }
+
+            // Am ENDE von ApplyThemeToDynamicButtons()
+            if (btnListShare != null)  MatchTopButtonLook(btnListShare);
+            if (btnListImport != null) MatchTopButtonLook(btnListImport);
+            try { RepositionHeaderShareImport(); } catch { }
+
+            // Am ENDE von ApplyThemeToDynamicButtons() anhängen, falls noch nicht vorhanden:
+            try
+            {
+                if (btnListDelete != null && !btnListDelete.IsDisposed)
+                    MatchTopButtonLook(btnListDelete);
+            }
+            catch { }
+            // Keine Positionsänderung hier!
+
+            // ===== [HeaderButtons:UniformHeight] BEGIN =====
+            try
+            {
+                var headerButtons = new[] { btnListShare, btnListImport, btnListDelete }
+                    .Where(b => b != null && !b.IsDisposed && b.Visible)
+                    .ToArray();
+
+                if (headerButtons.Length > 0)
+                {
+                    // 1) Harmonize padding for consistent visual height
+                    //    (adjust these values if your header style uses other paddings)
+                    foreach (var b in headerButtons)
+                    {
+                        // Only set if different to avoid unnecessary layout churn
+                        if (b!.Padding.Top != 4 || b.Padding.Bottom != 4 || b.Padding.Left != 6 || b.Padding.Right != 6)
+                            b.Padding = new Padding(6, 4, 6, 4);
+                    }
+
+                    // 2) Compute the maximum preferred height after padding normalization
+                    //    PreferredSize respects AutoSize and Font; good for equal visual height
+                    int targetHeight = headerButtons
+                        .Select(b => b!.PreferredSize.Height)
+                        .DefaultIfEmpty(0)
+                        .Max();
+
+                    // Safety floor
+                    if (targetHeight < 24) targetHeight = 24;
+
+                    // 3) Enforce minimum height so AutoSize buttons won't shrink below it
+                    foreach (var b in headerButtons)
+                    {
+                        var min = b!.MinimumSize;
+                        if (min.Height != targetHeight)
+                            b.MinimumSize = new Size(min.Width, targetHeight);
+
+                        // If AutoSize is OFF for any button, also set Height directly
+                        if (b.AutoSize == false && b.Height != targetHeight)
+                            b.Height = targetHeight;
+                    }
+
+                    // 4) Ask layout to recompute; positions are handled elsewhere
+                    foreach (var b in headerButtons) b!.PerformLayout();
+
+                    // 5) Optional: trigger your header re-layout (no-op if not present)
+                    try { RepositionHeaderShareImport(); } catch { }
+                }
+            }
+            catch { }
+            // ===== [HeaderButtons:UniformHeight] END =====
         }
+
 
         // Datenträger für Farben
         private readonly struct ThemePalette
@@ -149,5 +251,29 @@ namespace TruckModImporter
             public Color EditorBg { get; }
             public Color EditorFg { get; }
         }
+
+        /// <summary>
+        /// Überträgt das Aussehen der Top-Buttons auf einen anderen Button.
+        /// </summary>
+        private void MatchTopButtonLook(Button btn)
+        {
+            if (btn == null) return;
+            btn.FlatStyle = FlatStyle.Flat;
+            btn.BackColor = _currentTheme == AppTheme.Dark
+                ? Color.FromArgb(50, 50, 55)
+                : Color.White;
+            btn.ForeColor = _currentTheme == AppTheme.Dark
+                ? Color.FromArgb(240, 240, 240)
+                : Color.FromArgb(34, 34, 34);
+            btn.FlatAppearance.BorderColor = _currentTheme == AppTheme.Dark
+                ? Color.FromArgb(72, 72, 78)
+                : Color.LightGray;
+            btn.FlatAppearance.MouseOverBackColor = _currentTheme == AppTheme.Dark
+                ? Color.FromArgb(64, 64, 70)
+                : Color.FromArgb(229, 229, 229);
+            btn.Height = 32;
+            btn.Margin = new Padding(0, 0, 8, 0);
+        }
+
     }
 }

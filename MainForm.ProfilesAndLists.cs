@@ -7,6 +7,7 @@ using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Windows.Forms;
+using Microsoft.VisualBasic;
 
 namespace TruckModImporter
 {
@@ -23,7 +24,7 @@ namespace TruckModImporter
 
         // ------------------- PROFILES -------------------
 
-        private void LoadProfiles_Local()
+        private void LoadProfiles_Local5()
         {
             try
             {
@@ -114,30 +115,6 @@ namespace TruckModImporter
             return cbProfile.SelectedItem as string;
         }
 
-        private void DoOpenSelectedProfileFolder_Local()
-        {
-            try
-            {
-                var path = GetSelectedProfilePath();
-                if (string.IsNullOrWhiteSpace(path) || !Directory.Exists(path))
-                {
-                    MessageBox.Show(this, "Profilordner nicht gefunden.", "Öffnen",
-                        MessageBoxButtons.OK, MessageBoxIcon.Information);
-                    return;
-                }
-
-                Process.Start(new ProcessStartInfo
-                {
-                    FileName = path,
-                    UseShellExecute = true
-                });
-            }
-            catch (Exception ex)
-            {
-                SafeSetStatus("Fehler beim Öffnen des Profilordners: " + ex.Message);
-            }
-        }
-
         // ------------------- MODLISTS (ETS2/ATS Unterordner) -------------------
 
         private void LoadModlists_Local()
@@ -224,11 +201,38 @@ namespace TruckModImporter
                 var text = File.ReadAllText(path);
                 rtbPreview.Text = text;
                 SafeSetStatus("Modliste in Vorschau geladen: " + Path.GetFileName(path));
+                // Tabelle aus dem Vorschau-Text neu aufbauen (inkl. Info-Spalte/Notizen)
+                RebuildPreviewGridFromRtb();
             }
             catch (Exception ex)
             {
                 SafeSetStatus("Fehler beim Laden der Modliste: " + ex.Message);
             }
+            PreviewOrder_Run(reverse: true, numberFromTopOne: true);
+        }
+
+        private void DoLoadSelectedModlistToPreview_Local(string path)
+        {
+            try
+            {
+                rtbPreview.Clear();
+                if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+                {
+                    SafeSetStatus("Keine Modliste gewählt.");
+                    return;
+                }
+
+                var text = File.ReadAllText(path);
+                rtbPreview.Text = text;
+                SafeSetStatus("Modliste in Vorschau geladen: " + Path.GetFileName(path));
+                // Tabelle aus dem Vorschau-Text neu aufbauen (inkl. Info-Spalte/Notizen)
+                RebuildPreviewGridFromRtb();
+            }
+            catch (Exception ex)
+            {
+                SafeSetStatus("Fehler beim Laden der Modliste: " + ex.Message);
+            }
+            PreviewOrder_Run(reverse: true, numberFromTopOne: true);
         }
 
         // ------------------- Helpers: Pretty Profile Name -------------------
@@ -293,5 +297,344 @@ namespace TruckModImporter
             catch { }
             return null;
         }
+
+        // Fügen Sie dies in die Datei MainForm.ProfilesAndLists.cs ein (oder eine andere MainForm-Partial-Datei):
+
+        // Add near other fields:
+        private bool _autoListLoading;
+
+        // Add methods (nur falls nicht vorhanden):
+        private void AutoLoadSelectedModlist_Safe()
+        {
+            if (_autoListLoading) return;
+            _autoListLoading = true;
+            try
+            {
+                // Try to call the existing loader. Prefer the parameterless,
+                // fall back to path-based if that’s the one we have.
+                if (MethodExists(nameof(DoLoadSelectedModlistToPreview_Local)))
+                {
+                    try { DoLoadSelectedModlistToPreview_Local(); return; } catch { /* try path overload below */ }
+                }
+
+                var listPath = GetSelectedModlistPath();
+                if (!string.IsNullOrWhiteSpace(listPath) && System.IO.File.Exists(listPath))
+                {
+                    // If there is an overload with path:
+                    try { DoLoadSelectedModlistToPreview_Local(listPath); return; } catch { /* no-op */ }
+                }
+
+                // As a fallback just set a status so user sees something
+                SafeSetStatus(GetCurrentLanguageIsEnglish()
+                    ? "No mod list selected or file missing."
+                    : "Keine Modliste ausgewählt oder Datei fehlt.");
+            }
+            finally { _autoListLoading = false; }
+
+            PreviewOrder_Run(reverse: true, numberFromTopOne: true);
+        }
+
+        // tiny reflection helper so we don’t create duplicates elsewhere
+        private static bool MethodExists(string name)
+        {
+            try { return typeof(MainForm).GetMethod(name,
+                System.Reflection.BindingFlags.Instance |
+                System.Reflection.BindingFlags.Public |
+                System.Reflection.BindingFlags.NonPublic) != null; }
+            catch { return false; }
+        }
+
+        // Beispiel: Im Handler für cbList.SelectedIndexChanged (oder direkt vor dem Laden einer neuen Liste)
+        private void cbList_SelectedIndexChanged(object? sender, EventArgs e)
+        {
+            Persist_BeginListSwitch(); // <<== NEU, ganz oben
+            Persist_FlushCurrentEdits(); // <<== wie gehabt
+            // ... bestehende Logik ...
+            DoLoadSelectedModlistToPreview_Local();
+        }
+
+        // 7) Analog in cbGame_SelectedIndexChanged (falls vorhanden):
+        private void cbGame_SelectedIndexChanged(object? sender, EventArgs e)
+        {
+            Persist_BeginListSwitch(); // <<== NEU, ganz oben
+            // ... bestehende Logik ...
+        }
+
+/// <summary>
+/// Called at the end of grid rebuild to wire persistence and load edits.
+/// </summary>
+private void Persist_AfterGridFilled_Hook()
+{
+    Persist_EnsureGridWired();
+    if (!IsDisposed && _gridMods != null && !_gridMods.IsDisposed)
+    {
+        BeginInvoke(new Action(() =>
+        {
+            try { Persist_LoadEditsForCurrentList(); }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine("Persist load failed: " + ex.Message);
+            }
+        }));
+    }
+}
+
+#if false
+private void RebuildPreviewGridFromRtb()
+{
+    // ... bestehende Logik zum Füllen und Nummerieren des Grids ...
+
+    Persist_EnsureGridWired();
+    if (!IsDisposed && _gridMods != null && !_gridMods.IsDisposed)
+        BeginInvoke(new Action(() => { Persist_LoadEditsForCurrentList(); }));
+}
+#endif
+
+        // Helper: Resolves the real profile directory from the current selection in cbProfile
+        private bool ProfPaths_TryResolveCurrent(out string resolvedDir)
+        {
+            resolvedDir = "";
+            try
+            {
+                var root = GetProfilesRootDir();
+                var sel  = cbProfile?.SelectedItem?.ToString();
+                if (string.IsNullOrWhiteSpace(root) || string.IsNullOrWhiteSpace(sel))
+                    return false;
+
+                // Strategy 1: SelectedValue carries a path (if data-bound that way)
+                if (cbProfile?.SelectedValue is string valPath && System.IO.Directory.Exists(valPath))
+                { resolvedDir = valPath; return true; }
+
+                // Strategy 2: direct combine root + selected text (if dropdown holds folder name)
+                var try1 = System.IO.Path.Combine(root, sel);
+                if (System.IO.Directory.Exists(try1)) { resolvedDir = try1; return true; }
+
+                // Strategy 3: search first-level dirs under root for exact dir name match (case-insensitive)
+                foreach (var dir in System.IO.Directory.EnumerateDirectories(root))
+                {
+                    var name = System.IO.Path.GetFileName(dir);
+                    if (string.Equals(name, sel, StringComparison.OrdinalIgnoreCase))
+                    { resolvedDir = dir; return true; }
+                }
+
+                // Strategy 4: also check sibling "steam_profiles" beside root
+                var parent = System.IO.Directory.GetParent(root)?.FullName;
+                if (!string.IsNullOrEmpty(parent))
+                {
+                    var steamProfiles = System.IO.Path.Combine(parent, "steam_profiles");
+                    if (System.IO.Directory.Exists(steamProfiles))
+                    {
+                        foreach (var dir in System.IO.Directory.EnumerateDirectories(steamProfiles))
+                        {
+                            var name = System.IO.Path.GetFileName(dir);
+                            if (string.Equals(name, sel, StringComparison.OrdinalIgnoreCase))
+                            { resolvedDir = dir; return true; }
+                        }
+
+                        // Strategy 5: match by display name inside profile.sii (after auto-decrypt)
+                        foreach (var dir in System.IO.Directory.EnumerateDirectories(steamProfiles))
+                            if (Prof_ReadDisplayName(dir) is string disp && string.Equals(disp, sel, StringComparison.OrdinalIgnoreCase))
+                            { resolvedDir = dir; return true; }
+                    }
+                }
+
+                // Strategy 6: match by display name under root
+                foreach (var dir in System.IO.Directory.EnumerateDirectories(root))
+                    if (Prof_ReadDisplayName(dir) is string disp && string.Equals(disp, sel, StringComparison.OrdinalIgnoreCase))
+                    { resolvedDir = dir; return true; }
+
+                return false;
+            }
+            catch { return false; }
+        }
+
+        // Extracts display name from ...\profile.sii (already decrypted)
+        private static string? Prof_ReadDisplayName(string profileDir)
+        {
+            try
+            {
+                var sii = System.IO.Path.Combine(profileDir, "profile.sii");
+                if (!System.IO.File.Exists(sii)) return null;
+                foreach (var line in System.IO.File.ReadLines(sii))
+                {
+                    var idx = line.IndexOf("profile_name:", StringComparison.OrdinalIgnoreCase);
+                    if (idx >= 0)
+                    {
+                        var s = line.Substring(idx + "profile_name:".Length).Trim();
+                        s = s.Trim('"');
+                        return s;
+                    }
+                }
+            }
+            catch {}
+            return null;
+        }
+
+        private void BtnProfClone_Click(object? sender, EventArgs e)
+        {
+            try
+            {
+                if (!ProfPaths_TryResolveCurrent(out var src) || !System.IO.Directory.Exists(src))
+                { MessageBox.Show("Profilordner nicht gefunden."); return; }
+
+                var currentDisplay = Prof_ReadDisplayName(src) ?? System.IO.Path.GetFileName(src);
+                var suffix = GetCurrentLanguageIsEnglish() ? " - clone" : " - Klon";
+                var proposal = currentDisplay + suffix;
+                string? newDisplay = ShowProfileNameDialog(GetCurrentLanguageIsEnglish() ? "Clone profile" : "Profil klonen", proposal);
+                if (string.IsNullOrWhiteSpace(newDisplay)) return;
+                newDisplay = Scs_ValidateDisplayName(newDisplay);
+
+                // Zielordner-Name = hex(UTF8(newDisplay))
+                var parentRoot = GetProfileParentRoot(src);
+                var newFolderName = Scs_ProfileDisplayToFolder(newDisplay);
+                var dst = System.IO.Path.Combine(parentRoot, newFolderName);
+                if (System.IO.Directory.Exists(dst)) { MessageBox.Show("Zielprofil (Ordner) existiert bereits."); return; }
+
+                DirCopyRecursive(src, dst);
+                // Anzeigenamen in profile.sii setzen
+                Scs_WriteProfileDisplayName(dst, newDisplay);
+
+                // Profile neu laden & ggf. vorselektieren
+                try { LoadProfiles_Local(); } catch {}
+                if (cbProfile != null)
+                {
+                    foreach (var it in cbProfile.Items)
+                    {
+                        if (string.Equals(it?.ToString(), newDisplay, StringComparison.OrdinalIgnoreCase))
+                        { cbProfile.SelectedItem = it; break; }
+                    }
+                }
+            }
+            catch (System.Exception ex) { MessageBox.Show("Klonen fehlgeschlagen:\n" + ex.Message); }
+        }
+
+        private void BtnProfRename_Click(object? sender, EventArgs e)
+        {
+            try
+            {
+                if (!ProfPaths_TryResolveCurrent(out var src) || !System.IO.Directory.Exists(src))
+                { MessageBox.Show("Profilordner nicht gefunden."); return; }
+
+                var currentDisplay = Prof_ReadDisplayName(src) ?? System.IO.Path.GetFileName(src);
+                string? newDisplay = ShowProfileNameDialog(GetCurrentLanguageIsEnglish() ? "Rename profile" : "Profil umbenennen", currentDisplay);
+                if (string.IsNullOrWhiteSpace(newDisplay)) return;
+                newDisplay = Scs_ValidateDisplayName(newDisplay);
+
+                var parentRoot = GetProfileParentRoot(src);
+                var newFolderName = Scs_ProfileDisplayToFolder(newDisplay);
+                var dst = System.IO.Path.Combine(parentRoot, newFolderName);
+                if (string.Equals(src, dst, StringComparison.OrdinalIgnoreCase) == false &&
+                    System.IO.Directory.Exists(dst))
+                { MessageBox.Show("Zielprofil (Ordner) existiert bereits."); return; }
+
+                // Falls Quell- und Zielordner gleich (Name ergibt gleichen Hex) → nur profile.sii updaten
+                if (!string.Equals(src, dst, StringComparison.OrdinalIgnoreCase))
+                    System.IO.Directory.Move(src, dst);
+
+                Scs_WriteProfileDisplayName(dst, newDisplay);
+
+                try { LoadProfiles_Local(); } catch {}
+                if (cbProfile != null)
+                {
+                    foreach (var it in cbProfile.Items)
+                    {
+                        if (string.Equals(it?.ToString(), newDisplay, StringComparison.OrdinalIgnoreCase))
+                        { cbProfile.SelectedItem = it; break; }
+                    }
+                }
+            }
+            catch (System.Exception ex) { MessageBox.Show("Umbenennen fehlgeschlagen:\n" + ex.Message); }
+        }
+
+        private void BtnProfDelete_Click(object? sender, EventArgs e)
+        {
+            try
+            {
+                if (!ProfPaths_TryResolveCurrent(out var src) || !System.IO.Directory.Exists(src))
+                { MessageBox.Show("Profilordner nicht gefunden."); return; }
+
+                var currentName = System.IO.Path.GetFileName(src);
+
+                if (MessageBox.Show($"Profil '{currentName}' wirklich löschen?", "Profil löschen", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes)
+                    return;
+
+                System.IO.Directory.Delete(src, true);
+
+                try { LoadProfiles_Local(); } catch {}
+            }
+            catch (System.Exception ex) { MessageBox.Show("Löschen fehlgeschlagen:\n" + ex.Message); }
+        }
+
+// Maximal sinnvolle Länge des Anzeigenamens (konservativ)
+private const int SCS_PROFILE_NAME_MAX = 20;
+
+// UTF-8 → hex (lowercase) nach SCS-Schema für Ordnernamen
+private static string Scs_ProfileDisplayToFolder(string displayName)
+{
+    if (displayName == null) displayName = "";
+    var bytes = System.Text.Encoding.UTF8.GetBytes(displayName);
+    var sb = new System.Text.StringBuilder(bytes.Length * 2);
+    foreach (var b in bytes) sb.Append(b.ToString("x2")); // lowercase hex
+    return sb.ToString();
+}
+
+// profile.sii: profile_name: "..."
+private static void Scs_WriteProfileDisplayName(string profileDir, string displayName)
+{
+    var sii = System.IO.Path.Combine(profileDir, "profile.sii");
+    if (!System.IO.File.Exists(sii))
+        return; // nichts hart bauen – nur setzen, wenn vorhanden
+
+    var lines = System.IO.File.ReadAllLines(sii);
+    bool replaced = false;
+    for (int i = 0; i < lines.Length; i++)
+    {
+        var idx = lines[i].IndexOf("profile_name:", StringComparison.OrdinalIgnoreCase);
+        if (idx >= 0)
+        {
+            // ersetze gesamte Zeile (einfach & robust)
+            lines[i] = " profile_name: \"" + displayName.Replace("\"", "\\\"") + "\"";
+            replaced = true;
+            break;
+        }
+    }
+
+    if (!replaced)
+    {
+        // einfache Fallback-Strategie: am Anfang einfügen
+        // (optional: smarter innerhalb der "profile_unit", aber hier minimal-invasiv)
+        var list = lines.ToList();
+        list.Insert(0, " profile_name: \"" + displayName.Replace("\"", "\\\"") + "\"");
+        lines = list.ToArray();
+    }
+
+    System.IO.File.WriteAllLines(sii, lines, new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+}
+
+// Ermittelt Root von src (profiles oder steam_profiles)
+private static string GetProfileParentRoot(string srcDir)
+{
+    var parent = System.IO.Directory.GetParent(srcDir)?.FullName ?? "";
+    return parent;
+}
+
+// Validiert & kürzt Anzeigename
+private static string Scs_ValidateDisplayName(string input)
+{
+    var name = (input ?? "").Trim();
+    if (name.Length > SCS_PROFILE_NAME_MAX)
+        name = name.Substring(0, SCS_PROFILE_NAME_MAX);
+    return name;
+}
+
+// Rekursiv kopieren
+private static void DirCopyRecursive(string srcDir, string dstDir)
+{
+    System.IO.Directory.CreateDirectory(dstDir);
+    foreach (var f in System.IO.Directory.GetFiles(srcDir))
+        System.IO.File.Copy(f, System.IO.Path.Combine(dstDir, System.IO.Path.GetFileName(f)), overwrite: false);
+    foreach (var d in System.IO.Directory.GetDirectories(srcDir))
+        DirCopyRecursive(d, System.IO.Path.Combine(dstDir, System.IO.Path.GetFileName(d)));
+}
     }
 }

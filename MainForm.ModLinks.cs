@@ -110,15 +110,16 @@ namespace TruckModImporter
 
         private bool TryGetLinkWithFallback(string fullLine, string modName, string packageId, string rawToken, out string url)
         {
-            if (_modLinks.TryGetValue(fullLine.Trim(), out url) && !string.IsNullOrWhiteSpace(url)) return true;
+            url = string.Empty;
+            if (_modLinks.TryGetValue(fullLine.Trim(), out var foundUrl) && !string.IsNullOrWhiteSpace(foundUrl)) { url = foundUrl; return true; }
             if (!string.IsNullOrWhiteSpace(modName) &&
-                _modLinks.TryGetValue(modName.Trim(), out url) && !string.IsNullOrWhiteSpace(url)) return true;
+                _modLinks.TryGetValue(modName.Trim(), out foundUrl) && !string.IsNullOrWhiteSpace(foundUrl)) { url = foundUrl; return true; }
             if (!string.IsNullOrWhiteSpace(packageId) &&
-                _modLinks.TryGetValue(packageId.Trim(), out url) && !string.IsNullOrWhiteSpace(url)) return true;
+                _modLinks.TryGetValue(packageId.Trim(), out foundUrl) && !string.IsNullOrWhiteSpace(foundUrl)) { url = foundUrl; return true; }
             if (!string.IsNullOrWhiteSpace(rawToken) &&
-                _modLinks.TryGetValue(rawToken.Trim(), out url) && !string.IsNullOrWhiteSpace(url)) return true;
+                _modLinks.TryGetValue(rawToken.Trim(), out foundUrl) && !string.IsNullOrWhiteSpace(foundUrl)) { url = foundUrl; return true; }
 
-            url = ""; return false;
+            url = string.Empty; return false;
         }
 
         private bool TryGuessSteamUrl(string line, out string url)

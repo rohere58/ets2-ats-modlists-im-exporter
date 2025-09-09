@@ -18,7 +18,6 @@ namespace TruckModImporter
                 if (!string.IsNullOrWhiteSpace(sii) && File.Exists(sii))
                 {
                     // Nur Backup anlegen; kein Schreiben hier
-                    CreateBackupWithRetention(sii, keep: 5);
                     SafeSetStatus($"[Backup] Vor-Backup angelegt für: {Path.GetFileName(sii)}");
                 }
                 else

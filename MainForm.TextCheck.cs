@@ -19,23 +19,27 @@ namespace TruckModImporter
         {
             try
             {
-                var profileFolder = TryGetSelectedProfileFolderPath_CheckOnly();
-                if (string.IsNullOrWhiteSpace(profileFolder) || !Directory.Exists(profileFolder))
+                // Hole den aktuell ausgewählten Profilnamen
+                string? selectedProfile = cbProfile.SelectedItem?.ToString();
+                if (string.IsNullOrWhiteSpace(selectedProfile))
                 {
-                    MessageBox.Show(this,
-                        "Kein gültiges Profil ausgewählt (oder Pfad nicht gefunden).",
-                        "Text-Check",
-                        MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    MessageBox.Show(this, "Bitte ein Profil auswählen.", "Hinweis", MessageBoxButtons.OK, MessageBoxIcon.Information);
                     return;
                 }
 
-                var siiPath = Path.Combine(profileFolder, "profile.sii");
+                // Baue den Pfad zur profile.sii
+                string? profilePath = TryGetSelectedProfileFolderPath_CheckOnly();
+                if (string.IsNullOrWhiteSpace(profilePath))
+                {
+                    MessageBox.Show(this, "Profilordner konnte nicht ermittelt werden.", "Fehler", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+                string siiPath = Path.Combine(profilePath, "profile.sii");
+
+                // Jetzt prüfen, ob die Datei existiert und lesbar ist
                 if (!File.Exists(siiPath))
                 {
-                    MessageBox.Show(this,
-                        $"profile.sii nicht gefunden:\n{profileFolder}",
-                        "Text-Check",
-                        MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    MessageBox.Show(this, $"Datei nicht gefunden:\n{siiPath}", "Fehler", MessageBoxButtons.OK, MessageBoxIcon.Error);
                     return;
                 }
 
@@ -52,7 +56,7 @@ namespace TruckModImporter
 
                 bool isBinary = LooksLikeBinarySii(head);
                 var sb = new StringBuilder();
-                sb.AppendLine($"Profilordner : {profileFolder}");
+                sb.AppendLine($"Profilordner : {profilePath}");
                 sb.AppendLine($"Datei        : profile.sii");
                 sb.AppendLine($"Größe        : {size:N0} Bytes");
                 sb.AppendLine($"Format       : {(isBinary ? "BINÄR" : "TEXT")}");
